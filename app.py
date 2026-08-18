@@ -21,6 +21,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 st.set_page_config(page_title="Post Engagement Extractor", page_icon="📊", layout="centered")
 
+# Password gate (no-op when APP_PASSWORD isn't set — local dev stays frictionless).
+from auth import require_password
+require_password()
+
 st.title("Post Engagement Extractor")
 st.caption(
     "Upload a CSV or Excel of Twitter/X or Facebook post URLs. The app detects "
