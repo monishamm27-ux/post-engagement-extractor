@@ -62,18 +62,57 @@ with st.sidebar:
     else:
         st.caption("No cached results yet. Successful fetches persist automatically.")
 
-uploaded = st.file_uploader("Upload .xlsx or .csv", type=["xlsx", "csv"])
+tab_upload, tab_paste = st.tabs(["📎 Upload file", "📋 Paste URLs"])
 
-if uploaded is None:
-    st.info("Upload a file with a **URL** column to begin. Twitter/X and Facebook URLs are supported.")
-    st.stop()
+with tab_upload:
+    uploaded = st.file_uploader(
+        "Upload .xlsx or .csv (needs a **URL** column)", type=["xlsx", "csv"]
+    )
+
+with tab_paste:
+    st.caption(
+        "Paste one URL per line. Use this if file upload is blocked by "
+        "corporate DLP or you just want a quick run."
+    )
+    pasted = st.text_area(
+        "URLs (one per line)",
+        height=200,
+        placeholder=(
+            "https://x.com/user/status/1234567890\n"
+            "https://www.facebook.com/page/posts/9876543210\n"
+            "https://www.facebook.com/1234567_9876543"
+        ),
+        key="pasted_urls",
+    )
+    paste_source_name = st.text_input(
+        "Name this batch (used for the download filename)",
+        value="pasted_urls",
+        key="paste_source_name",
+    )
 
 # --- Read & validate input ---------------------------------------------------
+def _df_from_pasted(text: str) -> pd.DataFrame:
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    return pd.DataFrame({"URL": lines})
+
+
+source_name: str | None = None
 try:
-    df = read_input(uploaded.getvalue(), uploaded.name)
+    if uploaded is not None:
+        df = read_input(uploaded.getvalue(), uploaded.name)
+        source_name = uploaded.name.rsplit(".", 1)[0]
+    elif pasted and pasted.strip():
+        df = _df_from_pasted(pasted)
+        source_name = (paste_source_name or "pasted_urls").strip() or "pasted_urls"
+    else:
+        st.info(
+            "Provide URLs to begin — either upload a file or paste them under **📋 Paste URLs**. "
+            "Twitter/X and Facebook are supported."
+        )
+        st.stop()
     prep = prepare(df)
 except Exception as exc:
-    st.error(f"Could not read file: {exc}")
+    st.error(f"Could not read input: {exc}")
     st.stop()
 
 tw_count = len(prep.unique_by_platform.get("twitter", {}))
@@ -132,7 +171,7 @@ if result_df is not None:
     st.subheader("Enriched results")
     st.dataframe(result_df, use_container_width=True)
 
-    base = uploaded.name.rsplit(".", 1)[0]
+    base = source_name or "extractor"
     dl_a, dl_b = st.columns(2)
     dl_a.download_button(
         "⬇️ Download Excel",
