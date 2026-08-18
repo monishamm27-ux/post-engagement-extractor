@@ -1,0 +1,22 @@
+# Secrets — never commit these
+.env
+.streamlit/secrets.toml
+
+# Local state
+.checkpoint.json
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploaded/generated data — keep the repo lean
+*.xlsx
+*.csv
+!sample_urls.csv

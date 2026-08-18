@@ -1,0 +1,6 @@
+URL,Note
+https://twitter.com/elonmusk/status/1732312404770295860,example 1
+https://x.com/OpenAI/status/1735529865390756177,example 2
+https://x.com/AnthropicAI/status/1730863284869345486,example 3
+not-a-url,should be flagged invalid
+https://twitter.com/elonmusk/status/1732312404770295860,duplicate of row 1
