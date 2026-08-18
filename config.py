@@ -37,15 +37,18 @@ class ApifyActor:
         if self.input_style == "ids":
             # Actor takes bare tweet IDs (e.g. danek/twitter-scraper).
             ids = [u.rstrip("/").rsplit("/", 1)[-1].split("?", 1)[0] for u in urls]
-            return {"lookup_post_ids": ids, "max_posts": max(len(ids), 1)}
+            return {"lookup_post_ids": ids, "max_posts": max(len(ids), 20)}
         # Default: URL-based. Most tweet-URL scrapers accept `startUrls`;
         # unknown keys are ignored so we send common variants for tolerance.
+        # xquik/x-tweet-scraper requires maxItems >= 20 (schema check as of 2026-08-18).
+        # Since we only send URLs we care about, capping high is safe — the actor
+        # never fetches more tweets than URLs we provide.
         return {
             "startUrls": [{"url": u} for u in urls],
             "postUrls": urls,
             "tweetUrls": urls,
             "urls": urls,
-            "maxItems": len(urls),
+            "maxItems": max(len(urls), 20),
         }
 
 
