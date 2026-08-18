@@ -114,7 +114,9 @@ def _run_actor(
     """
     run_input = actor.build_input(urls)
     log.info("Calling actor %s with %d urls", actor.label, len(urls))
-    run = client.actor(actor.actor_id).call(run_input=run_input, timeout_secs=timeout_secs)
+    # Don't pass timeout_secs — its arg name differs across apify-client versions;
+    # the actor's own default timeout is sane for our workload.
+    run = client.actor(actor.actor_id).call(run_input=run_input)
     if not run or not run.get("defaultDatasetId"):
         raise RuntimeError(f"actor {actor.label} returned no dataset")
 

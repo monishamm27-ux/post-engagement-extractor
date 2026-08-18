@@ -9,7 +9,7 @@ import streamlit as st
 from config import FACEBOOK_ACTORS, TWITTER_ACTORS, settings
 
 # Build/version marker — bump on every push so we can verify what's actually running.
-APP_VERSION = "2026-08-18-fix4-maxitems-and-debug"
+APP_VERSION = "2026-08-18-fix5-drop-timeout-secs"
 from checkpoint import clear as clear_checkpoint, stats as checkpoint_stats
 from file_io import (
     merge_metrics,
