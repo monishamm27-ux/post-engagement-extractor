@@ -7,6 +7,9 @@ import pandas as pd
 import streamlit as st
 
 from config import FACEBOOK_ACTORS, TWITTER_ACTORS, settings
+
+# Build/version marker — bump on every push so we can verify what's actually running.
+APP_VERSION = "2026-08-18-fix4-maxitems-and-debug"
 from checkpoint import clear as clear_checkpoint, stats as checkpoint_stats
 from file_io import (
     merge_metrics,
@@ -33,6 +36,7 @@ st.caption(
 )
 
 with st.sidebar:
+    st.caption(f"Build: `{APP_VERSION}`")
     st.subheader("Configuration")
     if settings.has_token:
         st.success("Apify token detected")
@@ -162,6 +166,14 @@ if run:
         ok = int((result["Status"] == "ok").sum())
         failed = len(result) - ok
         status_line.success(f"Finished — {ok} enriched rows, {failed} not enriched.")
+        if ok == 0 and failed > 0:
+            # Surface the first non-ok Note so the user sees the real reason.
+            first_note = str(result.loc[result["Status"] != "ok", "Note"].iloc[0])
+            st.error(
+                f"⚠️ 0 rows enriched. First failure reason:\n\n`{first_note}`\n\n"
+                "This usually means one of: the Apify token is missing/wrong, "
+                "the actor changed its input schema, or every URL was genuinely unavailable."
+            )
     except Exception as exc:
         st.error(f"Extraction failed: {exc}")
 
