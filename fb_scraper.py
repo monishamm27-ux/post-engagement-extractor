@@ -46,20 +46,47 @@ def _first_int(item: dict, keys) -> Optional[int]:
 
 
 def _extract_raw_post_id(item: dict) -> Optional[str]:
-    """Return the actor's own post_id — matched later against our reverse index."""
+    """Return the actor's own post_id — matched later against our reverse index.
+
+    Kept for backward compatibility; new code should prefer _extract_id_candidates
+    which returns every plausible identifier the item exposes.
+    """
+    cands = _extract_id_candidates(item)
+    return cands[0] if cands else None
+
+
+def _extract_id_candidates(item: dict) -> list:
+    """Return every plausible identifier the item exposes, in preference order.
+
+    Different actors label the ID differently and sometimes return only a URL.
+    We collect all candidates so the reverse-index lookup can try each one and
+    match on whichever the caller's tail_to_key happens to know about.
+    """
+    cands: list = []
+    seen: set = set()
+
+    def _add(val) -> None:
+        if val is None:
+            return
+        s = str(val).strip()
+        if not s or s in seen:
+            return
+        seen.add(s)
+        cands.append(s)
+
     for k in _ID_KEYS:
-        v = item.get(k)
-        if v:
-            return str(v)
-    # Try URL parsing as a last resort (some actors omit post_id).
+        _add(item.get(k))
+
+    # URL-derived candidates — the apify/facebook-posts-scraper actor often
+    # returns items whose only stable link back to our input is the URL field.
     from url_utils import parse_post_url  # local import avoids cycles
     for k in _URL_KEYS:
         u = item.get(k)
         if isinstance(u, str):
             ref = parse_post_url(u)
             if ref and ref.platform == "facebook":
-                return ref.post_id
-    return None
+                _add(ref.post_id)
+    return cands
 
 
 def _item_to_metrics(item: dict) -> TweetMetrics:
@@ -87,12 +114,25 @@ def _run_actor(
     remaining_keys maps composite `{page}:{post}` → canonical URL, so we can
     reverse-lookup the actor's returned post_id (which is just the numeric tail).
     """
-    # Build a reverse index: raw post_id (tail) -> our composite key.
-    # Composite keys are `{page}:{post}` or a plain string for other URL shapes.
+    # Build a reverse index: raw post_id -> our composite key.
+    # Composite keys look like `{page}:{post}` or a plain string for other URL shapes.
+    # Different Apify actors return the ID in wildly different formats:
+    #   - just the post tail:     "1094243529784620"
+    #   - underscore composite:   "100933695690337_1094243529784620"
+    #   - colon composite (URL):  "100933695690337:1094243529784620"
+    # Register every reasonable alias so any of them find the right key.
     tail_to_key: Dict[str, str] = {}
     for key in remaining_keys:
-        tail = key.rsplit(":", 1)[-1]
-        tail_to_key[tail] = key
+        tail_to_key[key] = key                     # full composite (colon form)
+        if ":" in key:
+            page, post = key.rsplit(":", 1)
+            tail_to_key[post] = key                # bare post segment (may still contain underscore)
+            tail_to_key[f"{page}_{post}"] = key    # underscore composite of the whole thing
+            # If the post segment itself is an underscore-composite (e.g.
+            # `/user/posts/{page_id}_{post_id}` inputs), also register the trailing
+            # numeric segment — that's the shape most FB actors return in `post_id`.
+            if "_" in post:
+                tail_to_key[post.rsplit("_", 1)[-1]] = key
 
     run_input = actor.build_input(urls)
     log.info("Calling FB actor %s with %d urls", actor.label, len(urls))
@@ -101,15 +141,45 @@ def _run_actor(
         raise RuntimeError(f"FB actor {actor.label} returned no dataset")
 
     out: Dict[str, TweetMetrics] = {}
+    unmatched = 0
+    first_item_logged = False
     for item in client.dataset(run["defaultDatasetId"]).iterate_items():
-        raw = _extract_raw_post_id(item)
-        if not raw:
+        if not first_item_logged:
+            # Dump the first item's shape so we can see exactly what the actor
+            # returned — invaluable when matching silently produces 0 rows.
+            log.warning("FB DEBUG [%s] first item keys: %s",
+                        actor.label, sorted(item.keys()))
+            log.warning("FB DEBUG [%s] first item id-ish fields: %s",
+                        actor.label,
+                        {k: item.get(k) for k in
+                         ("post_id", "postId", "topLevelPostId", "id",
+                          "story_fbid", "storyFbid", "url", "postUrl",
+                          "topLevelUrl", "permalink")
+                         if item.get(k) is not None})
+            first_item_logged = True
+        candidates = _extract_id_candidates(item)
+        if not candidates:
+            unmatched += 1
             continue
-        composite = tail_to_key.get(raw)
+        composite = None
+        for raw in candidates:
+            composite = tail_to_key.get(raw)
+            if composite:
+                break
+            if "_" in raw:
+                composite = tail_to_key.get(raw.rsplit("_", 1)[-1])
+                if composite:
+                    break
+            if ":" in raw:
+                composite = tail_to_key.get(raw.rsplit(":", 1)[-1])
+                if composite:
+                    break
         if not composite:
-            # Unmatched item — skip rather than misattribute.
+            unmatched += 1
             continue
         out[composite] = _item_to_metrics(item)
+    if unmatched:
+        log.info("FB actor %s: %d items didn't match any input URL", actor.label, unmatched)
     return out
 
 

@@ -9,7 +9,7 @@ import streamlit as st
 from config import FACEBOOK_ACTORS, TWITTER_ACTORS, settings
 
 # Build/version marker — bump on every push so we can verify what's actually running.
-APP_VERSION = "2026-08-18-fix6-pin-apify-1x"
+APP_VERSION = "2026-09-01-fix10-fb-tail-of-composite"
 from checkpoint import clear as clear_checkpoint, stats as checkpoint_stats
 from file_io import (
     merge_metrics,
